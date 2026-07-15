@@ -17,6 +17,26 @@ if sm.rendezvous.initializedByTool then
 
     local gameEnv = _G
 
+    function sm.rendezvous.classExists(className)
+        local expected = _G[className]
+
+        return expected ~= nil and type(expected) == "table"
+    end
+
+    function sm.rendezvous.getLoadedClasses()
+        local loadedClasses = {}
+
+        for className, classTable in pairs(_G) do
+            if type(classTable) == "table" and classTable == classTable.__index then
+                print(className, tostring(classTable), tostring(classTable.__index))
+
+                table.insert(loadedClasses, className)
+            end
+        end
+
+        return loadedClasses
+    end
+
     for className, classTable in pairs(gameEnv) do
         if type(classTable) == "table" and (classTable.defaultInventorySize or classTable.enableAggro or classTable.enableAmmoConsumption or classTable.enableFuelConsumption or classTable.enableLimitedInventory or classTable.enableRestrictions or classTable.enableUpgrade or classTable.worldScriptFilename or classTable.worldScriptClass) then
             if type(classTable.server_onCreate) == "function" and type(classTable.client_onCreate) == "function" then
@@ -41,24 +61,6 @@ if sm.rendezvous.initializedByTool then
                 end
             end
         end
-    end
-
-    function sm.rendezvous.classExists(className)
-        local expected = _G[className]
-
-        return expected ~= nil and type(expected) == "table"
-    end
-
-    function sm.rendezvous.getLoadedClasses()
-        local loadedClasses = {}
-
-        for className, classTable in pairs(_G) do
-            if type(classTable) == "table" and classTable.__index ~= nil then
-                table.insert(loadedClasses, className)
-            end
-        end
-
-        return loadedClasses
     end
 
     return
@@ -88,6 +90,7 @@ function Loader:client_onCreate()
         sm.gui.chatMessage("[sm.rendezvous] Failed to hook game enclassTable.")
     end
 
+    sm.rendezvous.getLoadedClasses()
     -- sm.event.sendToGame("rdv_bindCommand")
 end
 
@@ -103,7 +106,7 @@ function Loader:client_onRefresh()
             "snd",
             false
         }
-    }, function (self, params)
+    }, function(self, params)
         print("crash test dummy", params)
     end, "twenty one pilots")
     self:client_onCreate()
