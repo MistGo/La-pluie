@@ -1,0 +1,13 @@
+{
+   "toolList" : [
+      {
+         "autoTool" : true,
+         "script" : {
+            "class" : "Loader",
+            "data" : {},
+            "file" : "$CONTENT_DATA/Scripts/Loader.lua"
+         },
+         "uuid" : "4b20e44a-7909-479d-a97f-92d77b0da271"
+      }
+   ]
+}
