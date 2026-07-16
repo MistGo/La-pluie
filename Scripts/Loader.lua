@@ -68,7 +68,6 @@ end
 sm.rendezvous.initializedByTool = true
 
 Loader = class()
-Loader.isHooked = false
 
 function sm.rendezvous.bindChatCommand(command, params, callback, help)
     if type(command) ~= "string" or type(params) ~= "table" or type(callback) ~= "function" or type(help) ~= "string" then return end
@@ -115,17 +114,15 @@ function Loader:client_onRefresh()
         function(self, params)
             print("crash test dummy", params)
         end,
+
         "twenty one pilots"
     )
+    
     self:client_onCreate()
 end
 
 function Loader:client_onFixedUpdate(timeStep)
-    -- print(sm.rendezvous)
-    if not sm.rendezvous.hasUnboundCommand then
-        -- sm.rendezvous.unboundCommands = (#sm.rendezvous.unboundCommands > 0) and {} or sm.rendezvous.unboundCommands
-        return
-    end
+    if not sm.rendezvous.hasUnboundCommand then return end
 
     for commandName, _ in pairs(sm.rendezvous.unboundCommands) do
         sm.event.sendToGame("rdv_bindChatCommand", commandName)
@@ -133,6 +130,8 @@ function Loader:client_onFixedUpdate(timeStep)
 
     sm.rendezvous.hasUnboundCommand = false
 end
+
+local isHooked = false
 
 local funcsToHook = {
     { sm.world, "createWorld" },
@@ -143,15 +142,15 @@ local funcsToHook = {
 
 for _, funcData in ipairs(funcsToHook) do
     local namespace = funcData[1]
-    local methodName = funcData[2]
+    local method = funcData[2]
 
-    local originalFunc = namespace[methodName]
+    local originalFunc = namespace[method]
 
     if originalFunc then
-        namespace[methodName] = function(...)
-            if not Loader.isHooked then
-                Loader.isHooked = true
-                sm.rendezvous.hookedFrom = methodName
+        namespace[method] = function(...)
+            if not isHooked then
+                isHooked = true
+                sm.rendezvous.hookedFrom = method
 
                 dofile("$CONTENT_ac2379db-1c7d-49fd-9d2e-4ccc6d11ce93/Scripts/Loader.lua")
             end
@@ -160,119 +159,3 @@ for _, funcData in ipairs(funcsToHook) do
         end
     end
 end
-
-
-
-
--- Gemini slop
-
---[[ if not sm.rendezvous then
-    sm.rendezvous = {
-        initializedByTool = false,
-        isGameHooked = false,
-        hasUnboundCommand = false,
-        unboundCommands = {},
-
-        -- Сюда будем складывать диспетчеры захуканных методов
-        activeHooks = {},
-
-        classExists = function(className)
-            local expected = _G[className]
-            return expected ~= nil and type(expected) == "table"
-        end,
-        getLoadedClasses = function()
-            local loadedClasses = {}
-            for className, classTable in pairs(_G) do
-                if type(classTable) == "table" and classTable.__index ~= nil then
-                    table.insert(loadedClasses, className)
-                end
-            end
-            return loadedClasses
-        end,
-
-        -- ====================================================================
-        -- ДИНАМИЧЕСКИЙ МЕНЕДЖЕР ХУКОВ (Мягкое управление)
-        -- ====================================================================
-        hook = {
-            -- Добавить или изменить обработчик
-            -- handlerFunc принимает: (self, params, originalFunc)
-            -- params — это таблица аргументов, которую можно модифицировать на ходу!
-            add = function(className, methodName, id, handlerFunc)
-                local classTable = _G[className]
-                if not classTable then return false end
-
-                local hookKey = className .. "." .. methodName
-
-                -- Если этот метод ещё ни разу не хукался, создаем для него диспетчер
-                if not sm.rendezvous.activeHooks[hookKey] then
-                    local originalFunc = classTable[methodName]
-                    if not originalFunc then return false end
-
-                    local dispatcher = {
-                        original = originalFunc,
-                        listeners = {}
-                    }
-                    sm.rendezvous.activeHooks[hookKey] = dispatcher
-
-                    -- Подменяем оригинальный метод в классе ОДИН раз на диспетчер
-                    classTable[methodName] = function(self, ...)
-                        local args = { ... }
-                        local blockOriginal = false
-
-                        -- Бежим по всем зарегистрированным слушателям
-                        for listenerId, listener in pairs(dispatcher.listeners) do
-                            if listener.enabled and type(listener.callback) == "function" then
-                                -- Вызываем слушатель. Он может вернуть true, чтобы заблокировать вызов оригинала
-                                local ok, preventDefault = pcall(listener.callback, self, args, dispatcher.original)
-                                if ok and preventDefault == true then
-                                    blockOriginal = true
-                                elseif not ok then
-                                    print("[Rendezvous-Hook] Error in " .. listenerId .. ": " .. tostring(preventDefault))
-                                end
-                            end
-                        end
-
-                        -- Если никто не заблокировал, вызываем оригинал с (возможно измененными) аргументами
-                        if not blockOriginal then
-                            return dispatcher.original(self, table.unpack(args))
-                        end
-                    end
-                end
-
-                -- Регистрируем или перезаписываем наш обработчик по ID
-                sm.rendezvous.activeHooks[hookKey].listeners[id] = {
-                    callback = handlerFunc,
-                    enabled = true
-                }
-                print(string.format("[Rendezvous-Hook] Registered/Updated '%s' on %s:%s", id, className, methodName))
-                return true
-            end,
-
-            -- Полностью удалить обработчик по ID
-            remove = function(className, methodName, id)
-                local hookKey = className .. "." .. methodName
-                local dispatcher = sm.rendezvous.activeHooks[hookKey]
-                if dispatcher and dispatcher.listeners[id] then
-                    dispatcher.listeners[id] = nil
-                    print(string.format("[Rendezvous-Hook] Removed '%s' from %s:%s", id, className, methodName))
-                    return true
-                end
-                return false
-            end,
-
-            -- Временно включить или выключить обработчик без удаления
-            enable = function(className, methodName, id, bool)
-                local hookKey = className .. "." .. methodName
-                local dispatcher = sm.rendezvous.activeHooks[hookKey]
-                if dispatcher and dispatcher.listeners[id] then
-                    dispatcher.listeners[id].enabled = (bool == true)
-                    print(string.format("[Rendezvous-Hook] Set '%s' status to %s on %s:%s", id, tostring(bool), className,
-                        methodName))
-                    return true
-                end
-                return false
-            end
-        }
-    }
-end
- ]]
