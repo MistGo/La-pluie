@@ -8,81 +8,18 @@ if not sm.rendezvous then
         hasUnboundCommand = false,
         unboundCommands = {},
 
-        classExists = function(className) end,
-        getLoadedClasses = function() return {} end
+        classExists = function()
+            error("sm.rendezvous.classExists cannot be called yet: the game world has not finished loading.")
+        end,
+        getLoadedClasses = function()
+            error("sm.rendezvous.getLoadedClasses cannot be called yet: the game world has not finished loading.")
+        end
     }
 end
 
 if sm.rendezvous.initializedByTool then
-    sm.rendezvous.isGameHooked = true
-
     local gameEnv = _G
-
-    -- local CLASS_SIGNATURES = {
-    --     colorHighlight = "ShapeClass",
-    --     colorNormal = "ShapeClass",
-    --     connectionInput = "ShapeClass",
-    --     connectionOutput = "ShapeClass",
-    --     maxChildCount = "ShapeClass",
-    --     maxParentCount = "ShapeClass",
-    --     client_onTinker = "ShapeClass",
-    --     client_canTinker = "ShapeClass",
-    --     client_onInteractThroughJoint = "ShapeClass",
-    --     client_canInteractThroughJoint = "ShapeClass",
-    --     client_canCarry = "ShapeClass",
-    --     client_getAvailableParentConnectionCount = "ShapeClass",
-    --     client_getAvailableChildConnectionCount = "ShapeClass",
-
-    --     client_onEquip = "ToolClass",
-    --     client_onUnequip = "ToolClass",
-    --     client_onEquippedUpdate = "ToolClass",
-    --     onToggle = "ToolClass",
-    --     client_canEquip = "ToolClass",
-    --     client_equipWhileSeated = "ToolClass",
-
-    --     client_onGraphicsLoaded = "CharacterClass",
-    --     client_onGraphicsUnloaded = "CharacterClass",
-    --     client_onEvent = "CharacterClass",
-
-    --     server_onUnitUpdate = "UnitClass",
-    --     server_onCharacterChangedColor = "UnitClass",
-
-    --     server_onShapeRemoved = "PlayerClass",
-    --     server_onInventoryChanges = "PlayerClass",
-    --     client_onCancel = "PlayerClass",
-    --     client_onReload = "PlayerClass",
-
-    --     server_onReceiveUpdate = "HarvestableClass",
-    --     server_onRemoved = "HarvestableClass",
-
-    --     defaultInventorySize = "GameClass",
-    --     enableAggro = "GameClass",
-    --     enableAmmoConsumption = "GameClass",
-    --     enableFuelConsumption = "GameClass",
-    --     enableLimitedInventory = "GameClass",
-    --     enableRestrictions = "GameClass",
-    --     enableUpgrade = "GameClass",
-
-    --     cellMaxX = "WorldClass",
-    --     cellMaxY = "WorldClass",
-    --     cellMinX = "WorldClass",
-    --     cellMinY = "WorldClass",
-    --     enableAssets = "WorldClass",
-    --     enableClutter = "WorldClass",
-    --     enableCreations = "WorldClass",
-    --     enableHarvestables = "WorldClass",
-    --     enableKinematics = "WorldClass",
-    --     enableNodes = "WorldClass",
-    --     enableSurface = "WorldClass",
-    --     groundMaterialSet = "WorldClass",
-    --     isIndoor = "WorldClass",
-    --     isStatic = "WorldClass",
-    --     renderMode = "WorldClass",
-    --     terrainScript = "WorldClass",
-    --     worldBorder = "WorldClass",
-
-    --     isSaveObject = "ScriptableObjectClass"
-    -- }
+    local CLASS_RULES = {}
 
     function sm.rendezvous.classExists(className)
         assert(type(className) == "string", "Error: Expected class name as a string, received: " .. type(className))
@@ -104,50 +41,49 @@ if sm.rendezvous.initializedByTool then
         return loadedClasses
     end
 
-    -- function sm.rendezvous.getClassType(className)
-    --     assert(type(className) == "string", "Error: Expected class name as a string, received: " .. type(className))
+    function sm.rendezvous.getClassType(className)
+        assert(type(className) == "string", "Error: Expected class name as a string, received: " .. type(className))
 
-    --     if not sm.rendezvous.classExists(className) then return "Unknown" end
+        if not sm.rendezvous.classExists(className) then return "Unknown" end
 
-    --     local targetClass = gameEnv[className]
+        local targetClass = gameEnv[className]
 
-    --     for i = 1, #CLASS_RULES do
-    --         local rule = CLASS_RULES[i]
-    --         local keys = rule.keys
+        for i = 1, #CLASS_RULES do
+            local rule = CLASS_RULES[i]
+            local keys = rule.keys
 
-    --         for j = 1, #keys do
-    --             if targetClass[keys[j]] ~= nil then
-    --                 return rule.type
-    --             end
-    --         end
-    --     end
+            for j = 1, #keys do
+                if targetClass[keys[j]] ~= nil then
+                    return rule.type
+                end
+            end
+        end
 
-    --     return "Unknown"
-    -- end
+        return "Unknown"
+    end
 
     for className, classTable in pairs(gameEnv) do
-        if type(classTable) == "table" and (classTable.defaultInventorySize or classTable.enableAggro or classTable.enableAmmoConsumption or classTable.enableFuelConsumption or classTable.enableLimitedInventory or classTable.enableRestrictions or classTable.enableUpgrade or classTable.worldScriptFilename or classTable.worldScriptClass) then
+        if sm.rendezvous.getClassType(className) == "GameClass" then
             if type(classTable.server_onCreate) == "function" and type(classTable.client_onCreate) == "function" then
                 classTable.rdv_bindChatCommand = function(self, new)
                     local commandData = sm.rendezvous.unboundCommands[new]
 
                     if commandData and not commandData.bound then
-                        local command = commandData.command -- string
-                        local params = commandData.params   -- table
+                        local command  = commandData.command
+                        local params   = commandData.params
                         local callback = commandData.callback
-                        local help = commandData.help       -- string
+                        local help     = commandData.help
 
                         local cleanName = command:gsub("/", "")
                         local methodSelector = "rdv_cmd_" .. cleanName
 
                         classTable[methodSelector] = callback
 
-                        commandData.command = nil
-                        commandData.params = nil
+                        commandData.command  = nil
+                        commandData.params   = nil
                         commandData.callback = nil
-                        commandData.help = nil
-
-                        commandData.bound = true
+                        commandData.help     = nil
+                        commandData.bound    = true
 
                         sm.game.bindChatCommand(command, params, methodSelector, help)
                     end
@@ -155,6 +91,8 @@ if sm.rendezvous.initializedByTool then
             end
         end
     end
+
+    sm.rendezvous.isGameHooked = true
 
     return
 end
@@ -169,8 +107,8 @@ function sm.rendezvous.bindChatCommand(command, params, callback, help)
     assert(type(callback) == "function", string.format("bad argument #3 (function expected, got %s)", type(callback)))
     assert(type(help) == "string", string.format("bad argument #4 (string expected, got %s)", type(help)))
 
-    if string.sub(command, 1, 1) ~= "/" then 
-        command = "/" .. command 
+    if string.sub(command, 1, 1) ~= "/" then
+        command = "/" .. command
     end
 
     sm.rendezvous.unboundCommands[command] = sm.rendezvous.unboundCommands[command] or {
@@ -183,9 +121,8 @@ function sm.rendezvous.bindChatCommand(command, params, callback, help)
     sm.rendezvous.hasUnboundCommand = true
 end
 
-
 function Loader:client_onCreate()
-    if not sm.rendezvous.isGameHooked or not sm.rendezvous.hookedFrom then
+    if not sm.rendezvous.isGameHooked then
         sm.gui.chatMessage("[sm.rendezvous] Failed to hook game env.")
     end
 
