@@ -71,8 +71,6 @@ if not Loader and sm.rendezvous.initializedByTool then
                         local help     = commandData.help
 
                         local cleanName = command:gsub("/", "")
-                        cleanName = cleanName:gsub("[^%w_]", "_")
-
                         local methodSelector = "rdv_cmd_" .. cleanName
                         classTable[methodSelector] = callback
                     
@@ -80,9 +78,10 @@ if not Loader and sm.rendezvous.initializedByTool then
                         commandData.params = nil
                         commandData.callback = nil
                         commandData.help = nil
-                        commandData.bound = true
 
-                        sm.game.bindChatCommand(command, params, methodSelector, help)
+                        if pcall(sm.game.bindChatCommand, command, params, methodSelector, help) then
+                            commandData.bound = true
+                        end
                     end
                 end
             end
@@ -90,6 +89,7 @@ if not Loader and sm.rendezvous.initializedByTool then
     end
         
     sm.rendezvous.isGameHooked = true
+
     return
 end
 
@@ -99,9 +99,9 @@ Loader = class()
 
 function sm.rendezvous.bindChatCommand(command, params, callback, help) -- GOGI стилизовать ошибки под игру
     sm.rendezvous.assertArgument(command, 1, {"string"})
-    sm.rendezvous.assertArgument(params, 1, {"table"})
-    sm.rendezvous.assertArgument(callback, 1, {"function"})
-    sm.rendezvous.assertArgument(help, 1, {"string"})
+    sm.rendezvous.assertArgument(params, 2, {"table"})
+    sm.rendezvous.assertArgument(callback, 3, {"function"})
+    sm.rendezvous.assertArgument(help, 4, {"string"})
 
     if string.sub(command, 1, 1) ~= "/" then
         command = "/" .. command
