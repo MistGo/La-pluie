@@ -6,13 +6,7 @@ if not sm.rendezvous then
         isGameHooked = false,
 
         commands = {},
-
-        classExists = function()
-            error("sm.rendezvous.classExists cannot be called yet: the game world has not finished loading.")
-        end,
-        getLoadedClasses = function()
-            error("sm.rendezvous.getLoadedClasses cannot be called yet: the game world has not finished loading.")
-        end
+        pendingCommands = {},
     }
 
     local isHooked = false
@@ -46,74 +40,21 @@ end
 
 if sm.rendezvous.initializedByTool then
     local gameEnv = _G
-    local CLASS_RULES = {
-        {
-            type = "ScriptableObjectClass",
-            keys = { "isSaveObject" }
-        },
-        {
-            type = "WorldClass",
-            keys = {
-                "cellMaxX", "cellMaxY", "cellMinX", "cellMinY", "enableAssets", "enableClutter",
-                "enableCreations", "enableHarvestables", "enableKinematics", "enableNodes",
-                "enableSurface", "groundMaterialSet", "isIndoor", "isStatic", "renderMode",
-                "terrainScript", "worldBorder"
-            }
-        },
-        {
-            type = "GameClass",
-            keys = {
-                "defaultInventorySize", "enableAggro", "enableAmmoConsumption",
-                "enableFuelConsumption", "enableLimitedInventory", "enableRestrictions", "enableUpgrade"
-            }
-        },
-        {
-            type = "PlayerClass",
-            keys = { "server_onShapeRemoved", "server_onInventoryChanges", "client_onCancel", "client_onReload" }
-        },
-        {
-            type = "UnitClass",
-            keys = { "server_onUnitUpdate", "server_onCharacterChangedColor" }
-        },
-        {
-            type = "CharacterClass",
-            keys = { "client_onGraphicsLoaded", "client_onGraphicsUnloaded", "client_onEvent" }
-        },
-        {
-            type = "ToolClass",
-            keys = {
-                "client_onEquip", "client_onUnequip", "client_onEquippedUpdate",
-                "onToggle", "client_canEquip", "client_equipWhileSeated"
-            }
-        },
-        {
-            type = "HarvestableClass",
-            keys = { "server_onReceiveUpdate", "server_onRemoved" }
-        },
-        {
-            type = "ShapeClass",
-            keys = {
-                "colorHighlight", "colorNormal", "connectionInput", "connectionOutput",
-                "maxChildCount", "maxParentCount", "client_onTinker", "client_canTinker",
-                "client_onInteractThroughJoint", "client_canInteractThroughJoint", "client_canCarry",
-                "client_getAvailableParentConnectionCount", "client_getAvailableChildConnectionCount"
-            }
-        }
-    }
+    local gameInstance = nil
 
-    function sm.rendezvous.classExists(className)
-        assert(type(className) == "string", "Error: Expected class name as a string, received: " .. type(className))
+    function sm.rendezvous.isClassLoaded(className)
+        assert(type(className) == "string", "Expected class name as a string, received: " .. type(className))
 
         local classTable = gameEnv[className]
 
         return type(classTable) == "table" and classTable == classTable.__index
     end
 
-    function sm.rendezvous.getLoadedClasses()
+    function sm.rendezvous.getAllLoadedClasses()
         local loadedClasses = {}
 
         for className, _ in pairs(gameEnv) do
-            if sm.rendezvous.classExists(className) then
+            if sm.rendezvous.isClassLoaded(className) then
                 table.insert(loadedClasses, className)
             end
         end
@@ -121,34 +62,27 @@ if sm.rendezvous.initializedByTool then
         return loadedClasses
     end
 
-    function sm.rendezvous.getClassType(className) -- GOGI переписать эту залупу и придумать точный определитель.
-        assert(type(className) == "string", "Error: Expected class name as a string, received: " .. type(className))
-
-        if not sm.rendezvous.classExists(className) then return "Unknown" end
-
-        local targetClass = gameEnv[className]
-
-        for i = 1, #CLASS_RULES do
-            local rule = CLASS_RULES[i]
-            local keys = rule.keys
-
-            for j = 1, #keys do
-                if targetClass[keys[j]] ~= nil then
-                    return rule.type
-                end
-            end
+    function sm.rendezvous.getGameStartData()
+        if gameInstance then
+            return gameInstance.data
         end
-
-        return "Unknown"
     end
 
     for className, classTable in pairs(gameEnv) do
-        if sm.rendezvous.getClassType(className) == "GameClass" then
-            classTable.rdv_bindChatCommands = function(self, unboundCommands)
+        if (classTable.defaultInventorySize or classTable.enableAggro or classTable.enableAmmoConsumption or classTable.enableFuelConsumption or classTable.enableLimitedInventory or classTable.enableRestrictions or classTable.enableUpgrade) and (classTable.server_onCreate ~= nil and classTable.client_onCreate ~= nil) then
+            classTable.rdv_orig_client_onCreate = classTable.client_onCreate
+            
+            classTable.client_onCreate = function (self)
+                gameInstance = self
+                
+                return classTable.rdv_orig_client_onCreate(self)
+            end
+            
+            classTable.rdv_bindChatCommands = function (self, unboundCommands)
                 for _, name in ipairs(unboundCommands) do
                     local commandData = sm.rendezvous.commands[name]
 
-                    if commandData and not commandData.bound then
+                    if type(commandData) == "table" and not commandData.bound then
                         local command  = commandData.command
                         local params   = commandData.params
                         local callback = commandData.callback
@@ -160,14 +94,19 @@ if sm.rendezvous.initializedByTool then
                         local methodSelector = "rdv_cmd_" .. cleanName
                         classTable[methodSelector] = callback
                     
+                        commandData.command = nil
+                        commandData.params = nil
+                        commandData.callback = nil
+                        commandData.help = nil
                         commandData.bound = true
+
                         sm.game.bindChatCommand(command, params, methodSelector, help)
                     end
                 end
             end
         end
     end
-
+        
     sm.rendezvous.isGameHooked = true
     return
 end
@@ -191,13 +130,12 @@ function sm.rendezvous.bindChatCommand(command, params, callback, help) -- GOGI 
     local owner = {}
 
     local exists, description = pcall(sm.json.open, "$CONTENT_DATA/description.json")
-    assert(exists, "[sm.rendezvous] Failed to load description.json. Make sure this is a valid Scrap Mechanic mod.")
-    assert(type(description) == "table" and description.type == "Blocks and Parts", "[sm.rendezvous] This mod is not a valid Blocks and Parts mod (invalid description.json)")
+    if exists and type(description) == "table" then
+        owner.localId = description.localId
+        owner.name = description.name
+    end
 
     local trace = select(2, pcall(error, "", 3))
-
-    owner.localId = description.localId
-    owner.name = description.name
     owner.source = trace:match("([^%s]+:%d+)") -- GOGI
 
     sm.rendezvous.commands[command] = {
