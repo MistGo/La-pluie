@@ -8,6 +8,9 @@ if not sm.rendezvous then
         commands = {},
         pendingCommands = {},
 
+        hooks = {},
+        pendingHooks = {},
+
         isClassLoaded = function()
             error("'sm.rendezvous.isClassLoaded' cannot be called yet: the game world has not finished loading.")
         end,
@@ -19,10 +22,10 @@ if not sm.rendezvous then
         end
     }
 
-    sm.rendezvous.assert = function(value, argIndex, str)
+    sm.rendezvous.assert = function(value, argIndex, str, override)
         if value then return end
 
-        local errorMsg = string.format("bad argument #%d (%s)", argIndex, str)
+        local errorMsg = override and str or string.format("bad argument #%d (%s)", argIndex, str)
 
         error(errorMsg, 2)
     end
@@ -200,27 +203,36 @@ if not Loader and sm.rendezvous.initializedByTool then
         return bestType
     end
 
+    function sm.rendezvous.classHasMethod(className, methodName)
+        sm.rendezvous.assertArgument(className, 1, { "string" })
+        sm.rendezvous.assertArgument(methodName, 2, { "string" })
+
+        if not sm.rendezvous.isClassLoaded(className) then
+            return false
+        end
+
+        return type(_G[className][method]) == "function"
+    end
+
     -- function sm.rendezvous.getClassesOfType(classType)
     --     sm.rendezvous.assertArgument(classType, 1, { "string" })
 
-    --     local loaded 
+    --     local loaded
 
     -- end
 
     for className, classTable in pairs(_G) do
         if sm.rendezvous.getClassType(className) == "GameClass" then
-            classTable.rdv_bindChatCommands = function(self, unboundCommands)
-                for _, name in ipairs(unboundCommands) do
+            classTable.rdv_bindChatCommands = function(self, pendingCommands)
+                for _, name in ipairs(pendingCommands) do
                     local commandData = sm.rendezvous.commands[name]
 
                     if type(commandData) == "table" and not commandData.bound then
-                        local command              = commandData.command
-                        local params               = commandData.params
-                        local callback             = commandData.callback
-                        local help                 = commandData.help
+                        local command, params, callback, help = commandData.command, commandData.params,
+                            commandData.callback, commandData.help
 
-                        local cleanName            = command:gsub("/", "")
-                        local methodSelector       = "rdv_cmd_" .. cleanName
+                        local cleanName = command:gsub("/", "")
+                        local methodSelector = "rdv_cmd_" .. cleanName
                         classTable[methodSelector] = callback
 
                         if pcall(sm.game.bindChatCommand, command, params, methodSelector, help) then
@@ -230,6 +242,72 @@ if not Loader and sm.rendezvous.initializedByTool then
                             commandData.help = nil
 
                             commandData.bound = true
+                        end
+                    end
+                end
+            end
+
+            classTable.rdv_injectHooks = function(self, pendingHooks)
+                self.rdv = self.rdv or {
+                    hooks = {}
+                }
+
+                for _, hookName in ipairs(pendingHooks) do
+                    local hookData = sm.rendezvous.hooks[hookName]
+
+                    if type(hookData) == "table" and not hook.injected then
+                        local className, methodName, callback, priority, phase = hookData.class, hookData.method,
+                            hookData.callback, hookData.priority, hookData.phase
+
+                        if sm.rendezvous.classHasMethod(className, methodName) then
+                            self.rdv.hooks[data.class] =
+                                self.rdv.hooks[data.class] or {}
+
+                            local methodData =
+                                self.rdv.hooks[data.class][data.method]
+
+
+                            if not methodData then
+                                methodData = {
+                                    original = class[data.method],
+                                    callbacks = {
+                                        [0] = {},
+                                        [1] = {}
+                                    }
+                                }
+
+                                self.rdv.hooks[data.class][data.method] = methodData
+
+
+                                class[data.method] = function(...)
+                                    local args = { ... }
+
+                                    for _, hook in ipairs(methodData.callbacks[0]) do
+                                        hook.callback(...)
+                                    end
+
+                                    local result = methodData.original(...)
+
+                                    for _, hook in ipairs(methodData.callbacks[1]) do
+                                        hook.callback(...)
+                                    end
+
+                                    return result
+                                end
+                            end
+
+
+                            table.insert(
+                                methodData.callbacks[data.phase],
+                                data
+                            )
+
+                            table.sort(
+                                methodData.callbacks[data.phase],
+                                function(a, b)
+                                    return a.priority < b.priority
+                                end
+                            )
                         end
                     end
                 end
@@ -245,6 +323,29 @@ sm.rendezvous.initializedByTool = true
 
 Loader = class()
 
+local function getModOwner()
+    local exists, description = pcall(sm.json.open, "$CONTENT_DATA/description.json")
+    if not exists or type(description) ~= "table" or not description.localId then
+        return nil
+    end
+
+    local trace = select(2, pcall(error, "", 3))
+    local uuid, path, line = trace:match("([%w%-]+)/([^%]]+)\"%]:(%d+)")
+    if not uuid or not path or not line then
+        return nil
+    end
+
+    if not string.find(description.localId, uuid, 1, true) then
+        return nil
+    end
+
+    return {
+        localId = description.localId,
+        name = description.name,
+        source = "$CONTENT_" .. description.localId .. "/" .. path .. ":" .. line
+    }
+end
+
 function sm.rendezvous.bindChatCommand(command, params, callback, help)
     sm.rendezvous.assertArgument(command, 1, { "string" })
     sm.rendezvous.assertArgument(params, 2, { "table" })
@@ -256,38 +357,56 @@ function sm.rendezvous.bindChatCommand(command, params, callback, help)
 
     if sm.rendezvous.commands[command] ~= nil then return end
 
-    local exists, description = pcall(sm.json.open, "$CONTENT_DATA/description.json")
-    if not exists or type(description) ~= "table" or not description.localId then return end
-
-    local trace = select(2, pcall(error, "", 3))
-    local uuid, path, line = trace:match("([%w%-]+)/([^%]]+)\"%]:(%d+)")
-
-    if not uuid or not path or not line then return end
-    if not string.find(description.localId, uuid, 1, true) then return end
-
-    local owner = {
-        localId = description.localId,
-        name = description.name,
-        source = "$CONTENT_" .. description.localId .. "/" .. path .. ":" .. line
-    }
+    local owner = getModOwner()
+    sm.rendezvous.assert(owner, 1, "Failed to verify mod description or identity", true)
 
     sm.rendezvous.commands[command] = {
         command = command,
         params = params,
         callback = callback,
         help = help,
+
         owner = owner
     }
 
     table.insert(sm.rendezvous.pendingCommands, command)
 end
 
+function sm.rendezvous.injectHooks(className, methodName, callback, priority, phase)
+    sm.rendezvous.assertArgument(className, 1, { "string" })
+    sm.rendezvous.assertArgument(methodName, 2, { "string" })
+    sm.rendezvous.assertArgument(callback, 3, { "function" })
+    sm.rendezvous.assertArgument(priority, 4, { "number" })
+    sm.rendezvous.assertArgument(phase, 5, { "number" })
+
+    sm.rendezvous.assert(priority >= 0 and priority <= 100, 4, "Priority must be a number between 0 and 100")
+    sm.rendezvous.assert(phase == 0 or phase == 1, 5,
+        "Phase must be 0 (execution at the start) or 1 (execution at the end)")
+
+    local owner = getModOwner()
+    sm.rendezvous.assert(owner, 1, "Failed to verify mod description or identity", true)
+
+    local hookName = className .. "." .. methodName
+
+    sm.rendezvous.hooks[hookName] = {
+        class = className,
+        method = methodName,
+        callback = callback,
+        priority = priority,
+        phase = phase,
+
+        owner = owner
+    }
+
+    table.insert(sm.rendezvous.pendingHooks, hookName)
+end
+
 function sm.rendezvous.isReady()
-    return sm.rendezvous.isGameHooked
+    return sm.rendezvous.isGameHooked == true
 end
 
 function Loader:client_onCreate()
-    if not sm.rendezvous.isGameHooked then
+    if not sm.rendezvous.isReady() then
         sm.gui.chatMessage("[sm.rendezvous] Failed to hook game env.")
     end
 end
@@ -298,10 +417,17 @@ end
 
 function Loader:client_onFixedUpdate()
     local pendingCommands = sm.rendezvous.pendingCommands
-    if #pendingCommands == 0 then return end
+    if #pendingCommands > 0 then
+        if sm.event.sendToGame("rdv_bindChatCommands", pendingCommands) then
+            sm.rendezvous.pendingCommands = {}
+        end
+    end
 
-    if sm.event.sendToGame("rdv_bindChatCommands", pendingCommands) then
-        sm.rendezvous.pendingCommands = {}
+    local pendingHooks = sm.rendezvous.pendingHooks
+    if #pendingHooks > 0 then
+        if sm.event.sendToGame("rdv_injectHooks", pendingHooks) then
+            sm.rendezvous.pendingHooks = {}
+        end
     end
 end
 
