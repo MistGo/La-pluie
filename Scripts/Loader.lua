@@ -22,6 +22,10 @@ if not sm.rendezvous then
         end
     }
 
+    sm.rendezvous.isReady = function()
+        return sm.rendezvous.isGameHooked == true
+    end
+
     sm.rendezvous.assert = function(value, argIndex, str, override)
         if value then return end
 
@@ -248,66 +252,61 @@ if not Loader and sm.rendezvous.initializedByTool then
             end
 
             classTable.rdv_injectHooks = function(self, pendingHooks)
-                self.rdv = self.rdv or {
-                    hooks = {}
-                }
+                self.rdv = self.rdv or { hooks = {} }
 
                 for _, hookName in ipairs(pendingHooks) do
                     local hookData = sm.rendezvous.hooks[hookName]
 
-                    if type(hookData) == "table" and not hook.injected then
-                        local className, methodName, callback, priority, phase = hookData.class, hookData.method,
-                            hookData.callback, hookData.priority, hookData.phase
+                    if type(hookData) == "table" and not hookData.injected then
+                        local className, methodName, callback, priority, phase =
+                            hookData.class, hookData.method, hookData.callback, hookData.priority, hookData.phase
 
                         if sm.rendezvous.classHasMethod(className, methodName) then
-                            self.rdv.hooks[data.class] =
-                                self.rdv.hooks[data.class] or {}
+                            local classTbl = _G[className]
 
-                            local methodData =
-                                self.rdv.hooks[data.class][data.method]
-
+                            self.rdv.hooks[className] = self.rdv.hooks[className] or {}
+                            local methodData = self.rdv.hooks[className][methodName]
 
                             if not methodData then
                                 methodData = {
-                                    original = class[data.method],
+                                    original = classTbl[methodName],
                                     callbacks = {
-                                        [0] = {},
-                                        [1] = {}
+                                        [0] = {}, -- Before
+                                        [1] = {} -- After
                                     }
                                 }
+                                self.rdv.hooks[className][methodName] = methodData
 
-                                self.rdv.hooks[data.class][data.method] = methodData
 
-
-                                class[data.method] = function(...)
-                                    local args = { ... }
-
+                                classTbl[methodName] = function(...)
                                     for _, hook in ipairs(methodData.callbacks[0]) do
                                         hook.callback(...)
                                     end
 
-                                    local result = methodData.original(...)
+                                    local returns = { pcall(methodData.original, ...) }
+                                    local success = returns[1]
 
                                     for _, hook in ipairs(methodData.callbacks[1]) do
                                         hook.callback(...)
                                     end
 
-                                    return result
+                                    -- Если оригинал упал — прокидываем ошибку выше
+                                    if not success then
+                                        error(returns[2], 2)
+                                    end
+
+                                    -- Безопасно возвращаем множественные аргументы
+                                    return select(2, table.unpack(returns))
                                 end
                             end
 
+                            table.insert(methodData.callbacks[phase], hookData)
 
-                            table.insert(
-                                methodData.callbacks[data.phase],
-                                data
-                            )
+                            table.sort(methodData.callbacks[phase], function(a, b)
+                                return (a.priority or 50) <= (b.priority or 50)
+                            end)
 
-                            table.sort(
-                                methodData.callbacks[data.phase],
-                                function(a, b)
-                                    return a.priority < b.priority
-                                end
-                            )
+                            hookData.injected = true
                         end
                     end
                 end
@@ -372,7 +371,7 @@ function sm.rendezvous.bindChatCommand(command, params, callback, help)
     table.insert(sm.rendezvous.pendingCommands, command)
 end
 
-function sm.rendezvous.injectHooks(className, methodName, callback, priority, phase)
+function sm.rendezvous.injectHook(className, methodName, callback, priority, phase)
     sm.rendezvous.assertArgument(className, 1, { "string" })
     sm.rendezvous.assertArgument(methodName, 2, { "string" })
     sm.rendezvous.assertArgument(callback, 3, { "function" })
@@ -380,8 +379,7 @@ function sm.rendezvous.injectHooks(className, methodName, callback, priority, ph
     sm.rendezvous.assertArgument(phase, 5, { "number" })
 
     sm.rendezvous.assert(priority >= 0 and priority <= 100, 4, "Priority must be a number between 0 and 100")
-    sm.rendezvous.assert(phase == 0 or phase == 1, 5,
-        "Phase must be 0 (execution at the start) or 1 (execution at the end)")
+    sm.rendezvous.assert(phase == 0 or phase == 1, 5, "Phase must be 0 (execution at the start) or 1 (execution at the end)")
 
     local owner = getModOwner()
     sm.rendezvous.assert(owner, 1, "Failed to verify mod description or identity", true)
@@ -399,10 +397,6 @@ function sm.rendezvous.injectHooks(className, methodName, callback, priority, ph
     }
 
     table.insert(sm.rendezvous.pendingHooks, hookName)
-end
-
-function sm.rendezvous.isReady()
-    return sm.rendezvous.isGameHooked == true
 end
 
 function Loader:client_onCreate()
