@@ -1,6 +1,10 @@
 ---@diagnostic disable
 
 if not sm.rendezvous then
+    local function notReady(name)
+        error(string.format("'%s' is unavailable: API is waiting for the game world to load.", name), 2)
+    end
+
     sm.rendezvous = {
         initializedByTool = false,
         isGameHooked = false,
@@ -11,15 +15,10 @@ if not sm.rendezvous then
         hooks = {},
         pendingHooks = {},
 
-        isClassLoaded = function()
-            error("'sm.rendezvous.isClassLoaded' cannot be called yet: the game world has not finished loading.")
-        end,
-        getAllLoadedClasses = function()
-            error("'sm.rendezvous.getAllLoadedClasses' cannot be called yet: the game world has not finished loading.")
-        end,
-        getClassType = function()
-            error("'sm.rendezvous.getClassType' cannot be called yet: the game world has not finished loading.")
-        end
+        isClassLoaded       = function() notReady("isClassLoaded") end,
+        getAllLoadedClasses = function() notReady("getAllLoadedClasses") end,
+        getClassType        = function() notReady("getClassType") end,
+        classHasMethod      = function() notReady("classHasMethod") end
     }
 
     sm.rendezvous.isReady = function()
@@ -303,7 +302,7 @@ if not Loader and sm.rendezvous.initializedByTool then
                             table.insert(methodData.callbacks[phase], hookData)
 
                             table.sort(methodData.callbacks[phase], function(a, b)
-                                return (a.priority or 50) <= (b.priority or 50)
+                                return (a.priority or 50) < (b.priority or 50)
                             end)
 
                             hookData.injected = true
@@ -374,6 +373,11 @@ end
 function sm.rendezvous.injectHook(className, methodName, callback, priority, phase)
     sm.rendezvous.assertArgument(className, 1, { "string" })
     sm.rendezvous.assertArgument(methodName, 2, { "string" })
+
+    local hookName = className .. "." .. methodName
+
+    if sm.rendezvous.hooks[hookName] ~= nil then return end
+
     sm.rendezvous.assertArgument(callback, 3, { "function" })
     sm.rendezvous.assertArgument(priority, 4, { "number" })
     sm.rendezvous.assertArgument(phase, 5, { "number" })
