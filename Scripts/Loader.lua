@@ -7,23 +7,19 @@ if not sm.rendezvous then
 
     sm.rendezvous = {
         initializedByTool = false,
-        isGameHooked = false,
+        isGameHooked      = false,
 
-        commands = {},
-        pendingCommands = {},
+        commands          = {},
+        pendingCommands   = {},
 
-        hooks = {},
-        pendingHooks = {},
+        hooks             = {},
+        pendingHooks      = {},
 
-        isClassLoaded       = function() notReady("isClassLoaded") end,
-        getAllLoadedClasses = function() notReady("getAllLoadedClasses") end,
-        getClassType        = function() notReady("getClassType") end,
-        classHasMethod      = function() notReady("classHasMethod") end
+        isLoaded          = function() notReady("isLoaded") end,
+        getClasses        = function() notReady("getClasses") end,
+        getType           = function() notReady("getType") end,
+        hasMethod         = function() notReady("hasMethod") end
     }
-
-    sm.rendezvous.isReady = function()
-        return sm.rendezvous.isGameHooked == true
-    end
 
     sm.rendezvous.assert = function(value, argIndex, str, override)
         if value then return end
@@ -62,95 +58,9 @@ end
 if not Loader and sm.rendezvous.initializedByTool then
     _G.ClassTypeCache = {}
 
-    local CLASS_SIGNATURES = {
-        ShapeClass = {
-            colorHighlight = true,
-            colorNormal = true,
-            connectionInput = true,
-            connectionOutput = true,
-            maxChildCount = true,
-            maxParentCount = true,
+    local CLASS_SIGNATURES = { ShapeClass = { colorHighlight = true, colorNormal = true, connectionInput = true, connectionOutput = true, maxChildCount = true, maxParentCount = true, client_onTinker = true, client_canTinker = true, client_onInteractThroughJoint = true, client_canInteractThroughJoint = true, client_canCarry = true, client_getAvailableParentConnectionCount = true, client_getAvailableChildConnectionCount = true }, ToolClass = { client_onEquip = true, client_onUnequip = true, client_onEquippedUpdate = true, onToggle = true, client_canEquip = true, client_equipWhileSeated = true }, CharacterClass = { client_onGraphicsLoaded = true, client_onGraphicsUnloaded = true, client_onEvent = true }, UnitClass = { server_onUnitUpdate = true, server_onCharacterChangedColor = true }, PlayerClass = { server_onShapeRemoved = true, server_onInventoryChanges = true, client_onCancel = true, client_onReload = true }, HarvestableClass = { server_onReceiveUpdate = true, server_onRemoved = true }, GameClass = { defaultInventorySize = true, enableAggro = true, enableAmmoConsumption = true, enableFuelConsumption = true, enableLimitedInventory = true, enableRestrictions = true, enableUpgrade = true }, WorldClass = { cellMaxX = true, cellMaxY = true, cellMinX = true, cellMinY = true, enableAssets = true, enableClutter = true, enableCreations = true, enableHarvestables = true, enableKinematics = true, enableNodes = true, enableSurface = true, groundMaterialSet = true, isIndoor = true, isStatic = true, renderMode = true, terrainScript = true, worldBorder = true }, ScriptableObjectClass = { isSaveObject = true } }
 
-            client_onTinker = true,
-            client_canTinker = true,
-            client_onInteractThroughJoint = true,
-            client_canInteractThroughJoint = true,
-            client_canCarry = true,
-
-            client_getAvailableParentConnectionCount = true,
-            client_getAvailableChildConnectionCount = true
-        },
-
-        ToolClass = {
-            client_onEquip = true,
-            client_onUnequip = true,
-            client_onEquippedUpdate = true,
-            onToggle = true,
-            client_canEquip = true,
-            client_equipWhileSeated = true
-        },
-
-        CharacterClass = {
-            client_onGraphicsLoaded = true,
-            client_onGraphicsUnloaded = true,
-            client_onEvent = true
-        },
-
-        UnitClass = {
-            server_onUnitUpdate = true,
-            server_onCharacterChangedColor = true
-        },
-
-        PlayerClass = {
-            server_onShapeRemoved = true,
-            server_onInventoryChanges = true,
-            client_onCancel = true,
-            client_onReload = true
-        },
-
-        HarvestableClass = {
-            server_onReceiveUpdate = true,
-            server_onRemoved = true
-        },
-
-        GameClass = {
-            defaultInventorySize = true,
-            enableAggro = true,
-            enableAmmoConsumption = true,
-            enableFuelConsumption = true,
-            enableLimitedInventory = true,
-            enableRestrictions = true,
-            enableUpgrade = true
-        },
-
-        WorldClass = {
-            cellMaxX = true,
-            cellMaxY = true,
-            cellMinX = true,
-            cellMinY = true,
-
-            enableAssets = true,
-            enableClutter = true,
-            enableCreations = true,
-            enableHarvestables = true,
-            enableKinematics = true,
-            enableNodes = true,
-            enableSurface = true,
-
-            groundMaterialSet = true,
-            isIndoor = true,
-            isStatic = true,
-            renderMode = true,
-            terrainScript = true,
-            worldBorder = true
-        },
-
-        ScriptableObjectClass = {
-            isSaveObject = true
-        }
-    }
-
-    function sm.rendezvous.isClassLoaded(className)
+    function sm.rendezvous.isLoaded(className)
         sm.rendezvous.assertArgument(className, 1, { "string" })
 
         local classTable = _G[className]
@@ -158,11 +68,11 @@ if not Loader and sm.rendezvous.initializedByTool then
         return type(classTable) == "table" and classTable == classTable.__index
     end
 
-    function sm.rendezvous.getAllLoadedClasses()
+    function sm.rendezvous.getClasses()
         local loadedClasses = {}
 
         for className, _ in pairs(_G) do
-            if sm.rendezvous.isClassLoaded(className) then
+            if sm.rendezvous.isLoaded(className) then
                 table.insert(loadedClasses, className)
             end
         end
@@ -170,7 +80,7 @@ if not Loader and sm.rendezvous.initializedByTool then
         return loadedClasses
     end
 
-    function sm.rendezvous.getClassType(className)
+    function sm.rendezvous.getType(className)
         sm.rendezvous.assertArgument(className, 1, { "string" })
 
         local cached = _G.ClassTypeCache[className]
@@ -178,7 +88,7 @@ if not Loader and sm.rendezvous.initializedByTool then
             return cached
         end
 
-        if not sm.rendezvous.isClassLoaded(className) then
+        if not sm.rendezvous.isLoaded(className) then
             return "UnknownClass"
         end
 
@@ -206,106 +116,104 @@ if not Loader and sm.rendezvous.initializedByTool then
         return bestType
     end
 
-    function sm.rendezvous.classHasMethod(className, methodName)
+    function sm.rendezvous.hasMethod(className, methodName)
         sm.rendezvous.assertArgument(className, 1, { "string" })
         sm.rendezvous.assertArgument(methodName, 2, { "string" })
 
-        if not sm.rendezvous.isClassLoaded(className) then
+        if not sm.rendezvous.isLoaded(className) then
             return false
         end
 
-        return type(_G[className][method]) == "function"
+        return type(_G[className][methodName]) == "function"
     end
 
-    -- function sm.rendezvous.getClassesOfType(classType)
-    --     sm.rendezvous.assertArgument(classType, 1, { "string" })
+    local function wrapMethod(originalMethod, callbacks)
+        return function(...)
+            local beforeHooks = callbacks[0]
+            for i = 1, #beforeHooks do
+                beforeHooks[i].callback(...)
+            end
 
-    --     local loaded
+            local returns = { originalMethod(...) }
 
-    -- end
+            local afterHooks = callbacks[1]
+            for i = 1, #afterHooks do
+                afterHooks[i].callback(...)
+            end
+
+            return unpack(returns)
+        end
+    end
+
+    local allowedTypes = {
+        GameClass = true,
+        CharacterClass = true,
+        PlayerClass = true,
+        WorldClass = true
+    }
 
     for className, classTable in pairs(_G) do
-        if sm.rendezvous.getClassType(className) == "GameClass" then
-            classTable.rdv_bindChatCommands = function(self, pendingCommands)
-                for _, name in ipairs(pendingCommands) do
-                    local commandData = sm.rendezvous.commands[name]
+        local classType = sm.rendezvous.getType(className)
 
-                    if type(commandData) == "table" and not commandData.bound then
-                        local command, params, callback, help = commandData.command, commandData.params,
-                            commandData.callback, commandData.help
+        if allowedTypes[classType] then
+            classTable.rdv_onEvent = function(self) end
 
-                        local cleanName = command:gsub("/", "")
-                        local methodSelector = "rdv_cmd_" .. cleanName
-                        classTable[methodSelector] = callback
+            if classType == "GameClass" then
+                classTable.rdv_bindChatCommands = function(self, pendingCommands)
+                    for i = 1, #pendingCommands do
+                        local name = pendingCommands[i]
+                        local commandData = sm.rendezvous.commands[name]
 
-                        if pcall(sm.game.bindChatCommand, command, params, methodSelector, help) then
-                            commandData.command = nil
-                            commandData.params = nil
-                            commandData.callback = nil
-                            commandData.help = nil
+                        if type(commandData) == "table" and not commandData.bound then
+                            local cleanName = commandData.command:gsub("/", "")
+                            local methodSelector = "rdv_cmd_" .. cleanName
 
-                            commandData.bound = true
+                            classTable[methodSelector] = commandData.callback
+
+                            if pcall(sm.game.bindChatCommand, commandData.command, commandData.params, methodSelector, commandData.help) then
+                                commandData.bound = true
+                            end
                         end
                     end
                 end
-            end
 
-            classTable.rdv_injectHooks = function(self, pendingHooks)
-                self.rdv = self.rdv or { hooks = {} }
+                classTable.rdv_injectHooks = function(self, pendingHooks)
+                    self.rdv = self.rdv or { hooks = {} }
 
-                for _, hookName in ipairs(pendingHooks) do
-                    local hookData = sm.rendezvous.hooks[hookName]
+                    for i = 1, #pendingHooks do
+                        local hookName = pendingHooks[i]
+                        local hookData = sm.rendezvous.hooks[hookName]
 
-                    if type(hookData) == "table" and not hookData.injected then
-                        local className, methodName, callback, priority, phase =
-                            hookData.class, hookData.method, hookData.callback, hookData.priority, hookData.phase
+                        if type(hookData) == "table" and not hookData.injected then
+                            local clsName = hookData.class
+                            local methodName = hookData.method
 
-                        if sm.rendezvous.classHasMethod(className, methodName) then
-                            local classTbl = _G[className]
+                            if sm.rendezvous.isLoaded(clsName) then
+                                local clsTable = _G[clsName]
 
-                            self.rdv.hooks[className] = self.rdv.hooks[className] or {}
-                            local methodData = self.rdv.hooks[className][methodName]
+                                self.rdv.hooks[clsName] = self.rdv.hooks[clsName] or {}
+                                local methodData = self.rdv.hooks[clsName][methodName]
 
-                            if not methodData then
-                                methodData = {
-                                    original = classTbl[methodName],
-                                    callbacks = {
-                                        [0] = {}, -- Before
-                                        [1] = {} -- After
+                                if not methodData then
+                                    local originalMethod = clsTable[methodName] or function() end
+
+                                    methodData = {
+                                        original = originalMethod,
+                                        callbacks = { [0] = {}, [1] = {} }
                                     }
-                                }
-                                self.rdv.hooks[className][methodName] = methodData
 
-
-                                classTbl[methodName] = function(...)
-                                    for _, hook in ipairs(methodData.callbacks[0]) do
-                                        hook.callback(...)
-                                    end
-
-                                    local returns = { pcall(methodData.original, ...) }
-                                    local success = returns[1]
-
-                                    for _, hook in ipairs(methodData.callbacks[1]) do
-                                        hook.callback(...)
-                                    end
-
-                                    -- Если оригинал упал — прокидываем ошибку выше
-                                    if not success then
-                                        error(returns[2], 2)
-                                    end
-
-                                    -- Безопасно возвращаем множественные аргументы
-                                    return select(2, table.unpack(returns))
+                                    self.rdv.hooks[clsName][methodName] = methodData
+                                    clsTable[methodName] = wrapMethod(methodData.original, methodData.callbacks)
                                 end
+
+                                table.insert(methodData.callbacks[hookData.phase], hookData)
+
+                                table.sort(methodData.callbacks[hookData.phase], function(a, b)
+                                    return a.priority < b.priority
+                                end)
+
+                                hookData.injected = true
                             end
-
-                            table.insert(methodData.callbacks[phase], hookData)
-
-                            table.sort(methodData.callbacks[phase], function(a, b)
-                                return (a.priority or 50) < (b.priority or 50)
-                            end)
-
-                            hookData.injected = true
                         end
                     end
                 end
@@ -324,17 +232,18 @@ Loader = class()
 local function getModOwner()
     local exists, description = pcall(sm.json.open, "$CONTENT_DATA/description.json")
     if not exists or type(description) ~= "table" or not description.localId then
-        return nil
+        return
     end
 
-    local trace = select(2, pcall(error, "", 3))
+    local trace = select(2, pcall(error, "", 4))
     local uuid, path, line = trace:match("([%w%-]+)/([^%]]+)\"%]:(%d+)")
+
     if not uuid or not path or not line then
-        return nil
+        return
     end
 
     if not string.find(description.localId, uuid, 1, true) then
-        return nil
+        return
     end
 
     return {
@@ -370,25 +279,24 @@ function sm.rendezvous.bindChatCommand(command, params, callback, help)
     table.insert(sm.rendezvous.pendingCommands, command)
 end
 
-function sm.rendezvous.injectHook(className, methodName, callback, priority, phase)
+function sm.rendezvous.hook(className, methodName, callback, priority, phase)
     sm.rendezvous.assertArgument(className, 1, { "string" })
     sm.rendezvous.assertArgument(methodName, 2, { "string" })
-
-    local hookName = className .. "." .. methodName
-
-    if sm.rendezvous.hooks[hookName] ~= nil then return end
-
     sm.rendezvous.assertArgument(callback, 3, { "function" })
     sm.rendezvous.assertArgument(priority, 4, { "number" })
     sm.rendezvous.assertArgument(phase, 5, { "number" })
 
-    sm.rendezvous.assert(priority >= 0 and priority <= 100, 4, "Priority must be a number between 0 and 100")
-    sm.rendezvous.assert(phase == 0 or phase == 1, 5, "Phase must be 0 (execution at the start) or 1 (execution at the end)")
+    local funcId = tostring(callback):gsub("function: ", "")
+    local hookName = className .. "." .. methodName .. "." .. funcId
+
+    if sm.rendezvous.hooks[hookName] ~= nil then return end -- GOGI решить проблему с названием хуков
+
+    sm.rendezvous.assert(priority > 0 and priority <= 100, 4, "Priority must be a number between 1 and 100")
+    sm.rendezvous.assert(phase == 0 or phase == 1, 5,
+        "Phase must be 0 (execution at the start) or 1 (execution at the end)")
 
     local owner = getModOwner()
     sm.rendezvous.assert(owner, 1, "Failed to verify mod description or identity", true)
-
-    local hookName = className .. "." .. methodName
 
     sm.rendezvous.hooks[hookName] = {
         class = className,
@@ -406,6 +314,17 @@ end
 function Loader:client_onCreate()
     if not sm.rendezvous.isReady() then
         sm.gui.chatMessage("[sm.rendezvous] Failed to hook game env.")
+    end
+
+    if sm.rendezvous and sm.rendezvous.isReady() then
+        sm.rendezvous.injectHook(
+            "CreativePlayer",
+            "client_onReload",
+            function(self)
+                print("[TEST-BEFORE] Хук сработал!")
+            end,
+            50,
+            0)
     end
 end
 
@@ -429,8 +348,6 @@ function Loader:client_onFixedUpdate()
     end
 end
 
-local isHooked = false
-
 local funcsToHook = {
     { sm.world, "createWorld" },
     { sm.world, "loadWorld" },
@@ -438,15 +355,14 @@ local funcsToHook = {
     { sm.gui,   "createSurvivalHudGui" }
 }
 
-for _, funcData in ipairs(funcsToHook) do
-    local namespace = funcData[1]
-    local method = funcData[2]
+for i = 1, #funcsToHook do
+    local namespace = funcsToHook[i][1]
+    local method = funcsToHook[i][2]
     local originalFunc = namespace[method]
 
     if originalFunc then
         namespace[method] = function(...)
-            if not isHooked then
-                isHooked = true
+            if not sm.rendezvous.hookedFrom then
                 sm.rendezvous.hookedFrom = method
                 dofile("$CONTENT_ac2379db-1c7d-49fd-9d2e-4ccc6d11ce93/Scripts/Loader.lua")
             end
